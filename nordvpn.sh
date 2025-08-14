@@ -19,8 +19,8 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # --- Configuration ---
-WG_CONF="./nordvpn_gr.conf"
-WG_LOCAL_IP="10.5.0.2/32" # The IP for our side of the tunnel
+WG_CONF="./your_WireGuard.conf"
+WG_LOCAL_IP="X.X.X.X/X" # The IP for our side of the tunnel
 WG_IFACE="wg10"
 
 BLUE_NETWORK="192.168.2.0/24"
@@ -40,7 +40,7 @@ do_start() {
         exit 0
     fi
 
-    echo "### [START] Bringing up NordVPN tunnel: ${WG_IFACE}..."
+    echo "### [START] Bringing up VPN tunnel: ${WG_IFACE}..."
 
    # 1. Create the WireGuard interface if it doesn't exist.
     ip link show "${WG_IFACE}" >/dev/null 2>&1 || ip link add "${WG_IFACE}" type wireguard
@@ -48,7 +48,7 @@ do_start() {
     # 2. Assign the local IP address to the interface.
     ip addr add "${WG_LOCAL_IP}" dev "${WG_IFACE}"
 
-    echo "### [START] Activate wireguard NordVPN profile on ${WG_IFACE}..."
+    echo "### [START] Activate wireguard VPN profile on ${WG_IFACE}..."
 
    # 3. Apply the cryptographic configuration from the file.
     #    `wg setconf` is used to apply a static configuration.
@@ -85,7 +85,7 @@ do_start() {
     # 9. Flush route cache.
     ip route flush cache
 
-    echo "✅ [START] NordVPN tunnel and policy routing are active."
+    echo "✅ [START] VPN tunnel and policy routing are active."
 }
 
 do_stop() {
@@ -115,11 +115,11 @@ do_stop() {
     #    It automatically removes associated routes and state.
     ip link del "${WG_IFACE}" 2>/dev/null || true
 
-    echo "✅ [STOP] NordVPN tunnel and all associated rules have been removed."
+    echo "✅ [STOP] VPN tunnel and all associated rules have been removed."
 }
 
 do_show() {
-    echo "=== [SHOW] NordVPN Configuration Status ==="
+    echo "=== [SHOW] VPN Configuration Status ==="
     echo ""
 
     echo "### Routing table 'blue-vpn':"
