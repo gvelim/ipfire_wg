@@ -73,7 +73,7 @@ do_start() {
     echo "==> [START] Routing in place. Applying NAT & Forwarding firewall rules..."
 
     # 7. Configure Firewall: Custom NAT and Forwarding rules.
-    iptables -t nat -A CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE
+    iptables -t nat -A WGNAT -o "${WG_IFACE}" -j MASQUERADE
     iptables -I WGBLOCK 1 -s "$BLUE_NETWORK" -o "$WG_IFACE" -j RETURN
     iptables -I WGBLOCK 2 -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
 
@@ -105,7 +105,7 @@ do_stop() {
     echo "==> [STOP] Removing NAT & Forwarding rules..."
 
     # 3. Remove Firewall rules.
-    iptables -t nat -D CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -D WGNAT -o "${WG_IFACE}" -j MASQUERADE 2>/dev/null || true
     iptables -D WGBLOCK -s "$BLUE_NETWORK" -o "$WG_IFACE" -j RETURN 2>/dev/null || true
     iptables -D WGBLOCK -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN 2>/dev/null || true
 
@@ -134,8 +134,8 @@ do_show() {
     iptables -L WGBLOCK -n -v 2>/dev/null || echo "❌ WGBLOCK chain not found"
     echo ""
 
-    echo "### CUSTOMPOSTROUTING NAT rules:"
-    iptables -t nat -L CUSTOMPOSTROUTING -n -v 2>/dev/null || echo "❌ CUSTOMPOSTROUTING chain not found"
+    echo "### WGNAT NAT rules:"
+    iptables -t nat -L WGNAT -n -v 2>/dev/null || echo "❌ WGNAT chain not found"
     echo ""
 
     echo "### WireGuard interface status:"

@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-This document details the design and implementation of a robust system for routing traffic from a specific internal network (`blue0`) through a commercial WireGuard VPN provider (NordVPN), while ensuring all other traffic uses the standard WAN connection. This solution was developed for the IPFire firewall distribution, specifically on a system where the `wg-quick` utility is unavailable.
+This document details the design and implementation of a robust system for routing traffic from a specific internal network (`blue0`) through a commercial WireGuard VPN provider i.e. NordVPN, while ensuring all other traffic uses the standard WAN connection. This solution was developed for the IPFire firewall distribution, specifically on a system where the `wg-quick` utility is unavailable.
 
-The final product is a single, standalone control script that manages the entire lifecycle of the VPN connection, including the complex routing policies and firewall rules required for this selective routing to work securely and reliably.
+The final product is a single, standalone control script that manages the entire lifecycle of the VPN connection, including the routing policies and firewall rules required for this selective routing to work securely and reliably.
 
 **Goal:**
 -   Traffic from the **Blue Zone** (`192.168.2.0/24`) must exit to the internet via the NordVPN tunnel.
@@ -14,7 +14,7 @@ The final product is a single, standalone control script that manages the entire
 
 ## 2. Deconstructing the IPFire WireGuard Logic: Key Insights
 
-To build a custom solution, we first had to understand how IPFire's default WireGuard implementation works. Our analysis revealed a system designed for site-to-site tunnels, which is fundamentally at odds with our goal.
+We first had to understand how IPFire's default WireGuard implementation works. Our analysis revealed a system designed exclusively for site-to-site tunnels using predefined IPFire WireGuard profiles and such profiles must be used as files for completed the net-2-net peer setup. Use of road-warrior-like WireGuard profiles, can inadvertently expose WLAN/LAN to unsolicited Internet traffic by mismanaging endpoint exposure and route advertisement.
 
 ### Insight 1: The "Default Route Hijack"
 
@@ -25,11 +25,11 @@ To build a custom solution, we first had to understand how IPFire's default Wire
 
 -   **IPFire's Method:** IPFire automatically creates a dedicated `iptables` chain called `WGBLOCK`. The firewall is configured to automatically pass all traffic coming from or going to any WireGuard interface (`wg+`) into this chain for evaluation.
 -   **Key Feature:** This chain has a default-deny posture, ending in a `REJECT` rule. This is a powerful, built-in security feature.
--   **Our Strategy:** This is the designated "sandbox" for WireGuard traffic. We integrate with the system as intended by inserting our `ACCEPT` rules at the top of `WGBLOCK`.
+-   **Our Strategy:** This is the designated "sandbox" for WireGuard traffic. We integrate with the system as intended by inserting our `ACCEPT` rules at the top of `WGBLOCK`. Using `RETURN` instead of `ACCEPT` ensures that the packet is not dropped but instead returned to the caller for further processing.
 
-### Insight 3: The `CUSTOMPOSTROUTING` NAT Chain
+### Insight 3: The `WGNAT` NAT Chain
 
--   **IPFire's Method:** IPFire provides an official "hook" for custom NAT rules called `CUSTOMPOSTROUTING`.
+-   **IPFire's Method:** IPFire provides an official "hook" for WireGuard NAT rules called `WGNAT`.
 -   **Our Strategy:** To ensure our NAT rule for the VPN traffic doesn't conflict with system-generated rules, we place our `MASQUERADE` rule here. This is the clean, "IPFire-native" way to handle NAT.
 
 ## 3. Designing the Custom Solution
@@ -43,7 +43,7 @@ The fundamental principle of our solution is to leave the main routing table com
 1.  **Create a Custom Routing Table:** We define a new routing table named `blue-vpn`.
 2.  **Create a Policy Rule:** We use `ip rule add` to create a single, high-priority rule that acts as a traffic cop, instructing the kernel: *"If a packet's source address is within the `blue0` network, use the `blue-vpn` table to make the routing decision."*
 3.  **Populate the Custom Table:** This was a critical insight. The `blue-vpn` table is a complete routing environment containing:
-    -   Routes for all other **local networks** (`green0`, `blue0`) to prevent local traffic from leaking into the VPN.
+    -   Routes for all other **local networks** (`green0`, `blue0`) to prevent local traffic from leaking into the VPN, but most importantly to ensure local DNS & DHCP services remain unaffected.
     -   A **default route** that sends all other traffic to our `wg10` WireGuard interface.
 
 ### The Implementation: A Manual Control Script
@@ -56,7 +56,7 @@ Since `wg-quick` was unavailable, we built a single, self-contained script to or
     -   Applies the cryptographic keys from the .conf file using wg setconf.
     -   Brings the interface up.
     -   Builds the custom routing table (blue-vpn) with both local and default routes.
-    -   Inserts the necessary MASQUERADE and ACCEPT rules into the IPFire-native CUSTOMPOSTROUTING and WGBLOCK chains.
+    -   Inserts the necessary MASQUERADE and ACCEPT rules into the IPFire-native `WGNAT` and `WGBLOCK` chains.
     -   Only after everything else is in place, it activates the policy by adding the ip rule.
 * **do_stop()**: This function tears down the configuration in the reverse order, ensuring the system is returned to its original state.
 * **do_show()**: A diagnostic function was added to provide a comprehensive overview of all components of our custom solution, making it easy to verify and troubleshoot.
