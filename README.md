@@ -1,11 +1,3 @@
-Of course. Adding a practical "How to Use" section is the perfect way to make the document complete and actionable.
-
-Here is the enhanced `README.md` with the new section included.
-
----
-
-# README.md
-
 # Selective Policy-Based Routing for WireGuard on IPFire
 
 ## 1. Overview
