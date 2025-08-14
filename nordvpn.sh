@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # =================================================================
-# Manual Control Script for NordVPN Policy-Routed Tunnel
+# Manual Control Script for VPN Policy-Routed Tunnel
 # =================================================================
 # This script manages the full lifecycle of a WireGuard connection
 # and applies the necessary policy routing and firewall rules.
@@ -21,7 +21,7 @@ fi
 # --- Configuration ---
 WG_CONF="./your_WireGuard.conf"
 WG_LOCAL_IP="X.X.X.X/X" # The IP for our side of the tunnel
-WG_IFACE="wg10"
+WG_IFACE="wg9"
 
 BLUE_NETWORK="192.168.2.0/24"
 BLUE_IFACE="blue0"
@@ -65,7 +65,7 @@ do_start() {
     fi
 
     # 6. Populate the custom routing table with a complete set of routes.
-    ip route flush table "$TABLE_NAME"
+    ip route flush table "$TABLE_NAME" 2>/dev/null || true
     ip route add "$GREEN_NETWORK" dev "$GREEN_IFACE" table "$TABLE_NAME"
     ip route add "$BLUE_NETWORK" dev "$BLUE_IFACE" table "$TABLE_NAME"
     ip route add default dev "$WG_IFACE" table "$TABLE_NAME"
@@ -73,9 +73,9 @@ do_start() {
     echo "==> [START] Routing in place. Applying NAT & Forwarding firewall rules..."
 
     # 7. Configure Firewall: Custom NAT and Forwarding rules.
-    iptables -t nat -A WGNAT -o "${WG_IFACE}" -j MASQUERADE
-    iptables -I WGBLOCK 1 -s "$BLUE_NETWORK" -o "$WG_IFACE" -j RETURN
-    iptables -I WGBLOCK 2 -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+    iptables -t nat -A CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE
+    iptables -I CUSTOMFORWARD 1 -s "$BLUE_NETWORK" -o "$WG_IFACE" -j ACCEPT
+    iptables -I CUSTOMFORWARD 2 -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
     echo "==> [START] NAT & Forwarding rules in place. Activating policy routing ..."
 
@@ -105,9 +105,9 @@ do_stop() {
     echo "==> [STOP] Removing NAT & Forwarding rules..."
 
     # 3. Remove Firewall rules.
-    iptables -t nat -D WGNAT -o "${WG_IFACE}" -j MASQUERADE 2>/dev/null || true
-    iptables -D WGBLOCK -s "$BLUE_NETWORK" -o "$WG_IFACE" -j RETURN 2>/dev/null || true
-    iptables -D WGBLOCK -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN 2>/dev/null || true
+    iptables -t nat -D CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE 2>/dev/null || true
+    iptables -D CUSTOMFORWARD -s "$BLUE_NETWORK" -o "$WG_IFACE" -j ACCEPT 2>/dev/null || true
+    iptables -D CUSTOMFORWARD -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
 
     echo "### [STOP] Tearing down ${WG_IFACE}..."
 
@@ -130,12 +130,12 @@ do_show() {
     ip rule show
     echo ""
 
-    echo "### WGBLOCK firewall rules:"
-    iptables -L WGBLOCK -n -v 2>/dev/null || echo "❌ WGBLOCK chain not found"
+    echo "### CUSTOMFORWARD firewall rules:"
+    iptables -L CUSTOMFORWARD -n -v 2>/dev/null || echo "❌ CUSTOMFORWARD chain not found"
     echo ""
 
-    echo "### WGNAT NAT rules:"
-    iptables -t nat -L WGNAT -n -v 2>/dev/null || echo "❌ WGNAT chain not found"
+    echo "### CUSTOMPOSTROUTING NAT rules:"
+    iptables -t nat -L CUSTOMPOSTROUTING -n -v 2>/dev/null || echo "❌ CUSTOMPOSTROUTING chain not found"
     echo ""
 
     echo "### WireGuard interface status:"
