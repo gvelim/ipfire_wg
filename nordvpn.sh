@@ -19,13 +19,13 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # --- Configuration ---
-WG_IFACE="wg10"
 WG_CONF="./nordvpn_gr.conf"
 WG_LOCAL_IP="10.5.0.2/32" # The IP for our side of the tunnel
+WG_IFACE="wg10"
 
 BLUE_NETWORK="192.168.2.0/24"
-GREEN_NETWORK="192.168.1.0/24"
 BLUE_IFACE="blue0"
+GREEN_NETWORK="192.168.1.0/24"
 GREEN_IFACE="green0"
 
 TABLE_NAME="blue-vpn"
@@ -74,8 +74,8 @@ do_start() {
 
     # 7. Configure Firewall: Custom NAT and Forwarding rules.
     iptables -t nat -A CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE
-    iptables -I WGBLOCK 1 -s "$BLUE_NETWORK" -o "$WG_IFACE" -j ACCEPT
-    iptables -I WGBLOCK 2 -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    iptables -I WGBLOCK 1 -s "$BLUE_NETWORK" -o "$WG_IFACE" -j RETURN
+    iptables -I WGBLOCK 2 -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
 
     echo "==> [START] NAT & Forwarding rules in place. Activating policy routing ..."
 
@@ -106,8 +106,8 @@ do_stop() {
 
     # 3. Remove Firewall rules.
     iptables -t nat -D CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE 2>/dev/null || true
-    iptables -D WGBLOCK -s "$BLUE_NETWORK" -o "$WG_IFACE" -j ACCEPT 2>/dev/null || true
-    iptables -D WGBLOCK -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+    iptables -D WGBLOCK -s "$BLUE_NETWORK" -o "$WG_IFACE" -j RETURN 2>/dev/null || true
+    iptables -D WGBLOCK -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN 2>/dev/null || true
 
     echo "### [STOP] Tearing down ${WG_IFACE}..."
 
@@ -121,23 +121,23 @@ do_stop() {
 do_show() {
     echo "=== [SHOW] NordVPN Configuration Status ==="
     echo ""
-    
+
     echo "### Routing table 'blue-vpn':"
     ip route list table blue-vpn 2>/dev/null || echo "❌ Table 'blue-vpn' not found or empty"
     echo ""
-    
+
     echo "### Policy routing rules:"
     ip rule show
     echo ""
-    
+
     echo "### WGBLOCK firewall rules:"
     iptables -L WGBLOCK -n -v 2>/dev/null || echo "❌ WGBLOCK chain not found"
     echo ""
-    
+
     echo "### CUSTOMPOSTROUTING NAT rules:"
     iptables -t nat -L CUSTOMPOSTROUTING -n -v 2>/dev/null || echo "❌ CUSTOMPOSTROUTING chain not found"
     echo ""
-    
+
     echo "### WireGuard interface status:"
     if ip link show "${WG_IFACE}" >/dev/null 2>&1; then
         echo "### WireGuard configuration:"
@@ -149,7 +149,7 @@ do_show() {
         echo "❌ WireGuard interface ${WG_IFACE} not found"
     fi
     echo ""
-    
+
     echo "=== [SHOW] Status complete ==="
 }
 
