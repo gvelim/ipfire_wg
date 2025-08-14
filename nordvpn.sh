@@ -118,6 +118,41 @@ do_stop() {
     echo "✅ [STOP] NordVPN tunnel and all associated rules have been removed."
 }
 
+do_show() {
+    echo "=== [SHOW] NordVPN Configuration Status ==="
+    echo ""
+    
+    echo "### Routing table 'blue-vpn':"
+    ip route list table blue-vpn 2>/dev/null || echo "❌ Table 'blue-vpn' not found or empty"
+    echo ""
+    
+    echo "### Policy routing rules:"
+    ip rule show
+    echo ""
+    
+    echo "### WGBLOCK firewall rules:"
+    iptables -L WGBLOCK -n -v 2>/dev/null || echo "❌ WGBLOCK chain not found"
+    echo ""
+    
+    echo "### CUSTOMPOSTROUTING NAT rules:"
+    iptables -t nat -L CUSTOMPOSTROUTING -n -v 2>/dev/null || echo "❌ CUSTOMPOSTROUTING chain not found"
+    echo ""
+    
+    echo "### WireGuard interface status:"
+    if ip link show "${WG_IFACE}" >/dev/null 2>&1; then
+        echo "### WireGuard configuration:"
+        wg show "${WG_IFACE}" 2>/dev/null || echo "❌ WireGuard config not available"
+        echo ""
+        echo "### Interface addresses:"
+        ip addr show "${WG_IFACE}"
+    else
+        echo "❌ WireGuard interface ${WG_IFACE} not found"
+    fi
+    echo ""
+    
+    echo "=== [SHOW] Status complete ==="
+}
+
 
 # --- Main Execution ---
 case "$1" in
@@ -127,8 +162,11 @@ case "$1" in
     stop)
         do_stop
         ;;
+    show)
+        do_show
+        ;;
     *)
-        echo "Usage: $0 {start|stop}"
+        echo "Usage: $0 {start|stop|show}"
         exit 1
         ;;
 esac
