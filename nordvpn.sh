@@ -59,30 +59,30 @@ do_start() {
 
     echo "==> [START] Interface is UP. Applying policy routing and routes..."
 
-    # 5. Register the custom routing table.
-    if ! grep -q "$TABLE_NAME" /etc/iproute2/rt_tables; then
-        echo "$TABLE_ID $TABLE_NAME" >> /etc/iproute2/rt_tables
+    # 5. Register the custom routing table if it doesn't already exist.
+    if ! grep -q "${TABLE_NAME}" /etc/iproute2/rt_tables; then
+        echo "${TABLE_ID} ${TABLE_NAME}" >> /etc/iproute2/rt_tables
     fi
 
     # 6. Populate the custom routing table with a complete set of routes.
-    ip route flush table "$TABLE_NAME" 2>/dev/null || true
-    ip route add "$GREEN_NETWORK" dev "$GREEN_IFACE" table "$TABLE_NAME"
-    ip route add "$BLUE_NETWORK" dev "$BLUE_IFACE" table "$TABLE_NAME"
-    ip route add default dev "$WG_IFACE" table "$TABLE_NAME"
+    ip route flush table "${TABLE_NAME}" 2>/dev/null || true
+    ip route add "${GREEN_NETWORK}" dev "${GREEN_IFACE}" table "${TABLE_NAME}"
+    ip route add "${BLUE_NETWORK}" dev "${BLUE_IFACE}" table "${TABLE_NAME}"
+    ip route add default dev "${WG_IFACE}" table "${TABLE_NAME}"
 
     echo "==> [START] Routing in place. Applying NAT & Forwarding firewall rules..."
 
     # 7. Configure Firewall: Custom NAT and Forwarding rules.
     iptables -t nat -A CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE
-    iptables -I CUSTOMFORWARD 1 -s "$BLUE_NETWORK" -o "$WG_IFACE" -j ACCEPT
-    iptables -I CUSTOMFORWARD 2 -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    iptables -I CUSTOMFORWARD 1 -s "${BLUE_NETWORK}" -o "${WG_IFACE}" -j ACCEPT
+    iptables -I CUSTOMFORWARD 2 -d "${BLUE_NETWORK}" -i "${WG_IFACE}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
     echo "==> [START] NAT & Forwarding rules in place. Activating policy routing ..."
 
-    # 8. Add the policy rule.
-    ip rule add from "$BLUE_NETWORK" table "$TABLE_NAME" prio "$POLICY_PRIO"
+    # 8. Add the policy rule. This is the final step that activates the routing.
+    ip rule add from "${BLUE_NETWORK}" table "${TABLE_NAME}" prio "${POLICY_PRIO}"
 
-    # 9. Flush route cache.
+    # 9. Flush route cache to ensure the new rules are applied immediately.
     ip route flush cache
 
     echo "✅ [START] VPN tunnel and policy routing are active."
@@ -91,13 +91,13 @@ do_start() {
 do_stop() {
     echo "==> [STOP] Removing policy routing..."
 
-    # 1. Remove the policy rule.
-    ip rule del from "$BLUE_NETWORK" table "$TABLE_NAME" prio "$POLICY_PRIO" 2>/dev/null || true
+    # 1. Remove the policy rule. This immediately stops routing traffic to the VPN table.
+    ip rule del from "${BLUE_NETWORK}" table "${TABLE_NAME}" prio "${POLICY_PRIO}" 2>/dev/null || true
 
     echo "==> [STOP] Removing routes..."
 
-    # 2. Flush the custom routing table (for good measure).
-    ip route flush table "$TABLE_NAME" 2>/dev/null || true
+    # 2. Flush the custom routing table.
+    ip route flush table "${TABLE_NAME}" 2>/dev/null || true
 
     # 4. Flush route cache.
     ip route flush cache
@@ -106,13 +106,12 @@ do_stop() {
 
     # 3. Remove Firewall rules.
     iptables -t nat -D CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE 2>/dev/null || true
-    iptables -D CUSTOMFORWARD -s "$BLUE_NETWORK" -o "$WG_IFACE" -j ACCEPT 2>/dev/null || true
-    iptables -D CUSTOMFORWARD -d "$BLUE_NETWORK" -i "$WG_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+    iptables -D CUSTOMFORWARD -s "${BLUE_NETWORK}" -o "${WG_IFACE}" -j ACCEPT 2>/dev/null || true
+    iptables -D CUSTOMFORWARD -d "${BLUE_NETWORK}" -i "${WG_IFACE}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
 
     echo "### [STOP] Tearing down ${WG_IFACE}..."
 
     # 5. Remove the interface. This is the cleanest way to stop everything.
-    #    It automatically removes associated routes and state.
     ip link del "${WG_IFACE}" 2>/dev/null || true
 
     echo "✅ [STOP] VPN tunnel and all associated rules have been removed."
@@ -122,8 +121,8 @@ do_show() {
     echo "=== [SHOW] VPN Configuration Status ==="
     echo ""
 
-    echo "### Routing table 'blue-vpn':"
-    ip route list table blue-vpn 2>/dev/null || echo "❌ Table 'blue-vpn' not found or empty"
+    echo "### Routing table '${TABLE_NAME}':"
+    ip route list table ${TABLE_NAME} 2>/dev/null || echo "❌ Table '${TABLE_NAME}' not found or empty"
     echo ""
 
     echo "### Policy routing rules:"
@@ -157,7 +156,13 @@ do_show() {
 # --- Main Execution ---
 case "$1" in
     start)
+        # Set a trap to clean up if this block fails or is interrupted.
+        trap do_stop EXIT INT TERM
+
         do_start
+
+        # If we reached here, do_start succeeded. Disable the trap for a clean exit.
+        trap - EXIT INT TERM
         ;;
     stop)
         do_stop
