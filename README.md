@@ -2,85 +2,85 @@
 
 ## 1. Overview
 
-This document describes the design and implementation of a system for routing traffic from a specific internal network (`blue0`) through a commercial WireGuard VPN provider (e.g., NordVPN), while maintaining the standard WAN for other zones.
+This document details the design and implementation of a solution for routing traffic from a specific internal network (`blue0`) through a commercial WireGuard VPN provider (e.g., NordVPN), while ensuring all other traffic uses the standard WAN connection. This solution was developed for the IPFire firewall distribution, specifically on a system where the `wg-quick` utility is unavailable.
 
 The solution is provided as a single, standalone control script that manages the VPN connection, routing policies, and firewall rules required for this selective routing scenario.
 
-**Goal:**
-- Traffic from the **Blue Zone** (`192.168.2.0/24`) is routed to the internet via the NordVPN tunnel.
-- Traffic from the **Green Zone** (`192.168.1.0/24`) and the firewall itself uses the primary WAN connection.
-- Local services on the firewall (DNS, DHCP) remain accessible to all internal clients.
-- The configuration is designed to prevent traffic leaks if the VPN tunnel fails (a "kill switch").
+**Primary Goals:**
+-   Traffic from the **Blue Zone** (`192.168.2.0/24`) must exit to the internet via the VPN tunnel.
+-   Traffic from the **Green Zone** (`192.168.1.0/24`) and the firewall itself must use the primary WAN connection.
+-   Local services on the firewall (DNS, DHCP) must remain accessible to all internal clients.
 
-## 2. IPFire WireGuard Logic: Summary
+## 2. The Problem: IPFire's Net-to-Net Logic vs. Commercial VPNs
 
-The default IPFire WireGuard implementation is designed for site-to-site tunnels using predefined IPFire WireGuard profiles. This approach does not provide selective routing or integration with commercial VPNs for specific zones or interfaces.
+IPFire's WebUI provides distinct configurations for "Roadwarrior" (a single client connecting in) and "Net-to-Net" (connecting two networks) setups. Our analysis focuses on the conflict that arises when a commercial VPN profile—which is functionally a roadwarrior profile with a peer `AllowedIPs` of `0.0.0.0/0`—is used within IPFire's `net-to-net` logic. This specific mismatch triggers several problematic behaviors.
 
-### Routing Behavior
+### Insight 1: The "Default Route Hijack"
+When a `net-to-net` tunnel is created with a commercial VPN profile, IPFire's backend scripts interpret the `0.0.0.0/0` peer as "the entire internet." Consequently, they modify the **main routing table** by inserting broad routes (`0.0.0.0/1`, `128.0.0.0/1`) that force *all* traffic from all zones into the WireGuard tunnel. This all-or-nothing approach prevents selective routing and breaks local services.
 
-- **IPFire's Method:** Creating a `net-to-net` tunnel via the IPFire WebUI modifies the main routing table by inserting broad routes (`0.0.0.0/1`, `128.0.0.0/1`) that redirect all outbound traffic through the VPN tunnel.
-- **Limitation:** This approach does not allow selective routing and can disrupt local services that expect to use the standard WAN connection.
+### Insight 2: The `FORWARD` Chain Gauntlet
+IPFire's main `FORWARD` firewall chain is a complex sequence of jumps to other chains. We discovered that `NEW` packets from our `blue0` zone destined for the `wg9` interface were being dropped by the final `DROP` rule in the `POLICYFWD` chain because there was no explicit `ACCEPT` rule for this non-standard traffic flow.
 
-### Firewall Chains
+### Insight 3: Misinterpreting `WGBLOCK`
+The `WGBLOCK` chain is designed to filter traffic *coming from* a WireGuard peer (`-i wg+`), not traffic *going out to* one. Attempting to place an outbound `ACCEPT` rule here is ineffective, as the traffic is never sent to this chain.
 
-The main `FORWARD` chain in IPFire consists of a sequence of jumps between chains that enforce the zone-based security model. Packets must traverse several chains (e.g., `CUSTOMFORWARD`, `WGBLOCK`) before being accepted or dropped.
+### Insight 4: The Power of Official "Hooks"
+The correct way to integrate custom rules is via IPFire's custom hooks. By using the `CUSTOMFORWARD` and `CUSTOMPOSTROUTING` chains, our rules are processed early and are safe from being overwritten by system updates.
 
-- **`WGBLOCK` Chain:** The `WGBLOCK` chain is configured to filter traffic originating from a WireGuard peer into the network. It does not process outbound traffic from internal zones to the VPN interface.
+## 3. The Solution: Policy-Based Routing
 
-- **`CUSTOMFORWARD` and `CUSTOMPOSTROUTING`:** IPFire provides official hooks for adding custom firewall and NAT rules. These should be used to ensure rules are applied at the correct stage in packet processing.
+To overcome these issues, we avoid IPFire's net-to-net logic entirely and use a more precise **Policy-Based Routing** strategy, orchestrated by a manual control script.
 
-## 3. Custom Solution Architecture
+This approach leaves the main routing table untouched. Instead, a single `ip rule` identifies traffic from the Blue Zone (`192.168.2.0/24`) and directs it to a custom routing table (`blue-vpn`). This table provides a complete routing environment for VPN clients, containing:
+1.  Routes for all local networks (Green, Blue) to ensure local traffic is handled correctly.
+2.  A new default route that sends all other traffic through the `wg9` WireGuard interface.
 
-The custom solution uses Linux policy-based routing to selectively route traffic from `blue0` through the VPN tunnel without affecting other zones.
+Firewall integration is handled cleanly using the `CUSTOMFORWARD` and `CUSTOMPOSTROUTING` hooks for our `ACCEPT` and `MASQUERADE` rules, respectively.
 
-### Key Features
+## 4. Implementation: The `nordvpn.sh` Script
 
-1. **Independent Interface Management:** The script manually creates and configures the `wg10` interface, separate from IPFire's default logic.
-2. **Policy-Based Routing:** The main routing table remains unchanged. An `ip rule` is used to route all traffic from `blue0` to a dedicated routing table (`blue-vpn`).
-3. **Custom Routing Table:** The `blue-vpn` table includes routes for all local networks (for DNS, DHCP, inter-zone traffic) and a default route via the `wg10` interface.
-4. **Firewall Integration:**
-   - The `MASQUERADE` rule is added to `CUSTOMPOSTROUTING`.
-   - `ACCEPT` rules for `blue0` traffic to and from the tunnel are added to `CUSTOMFORWARD`.
+The entire process is managed by a self-contained script that accepts `start`, `stop`, and `show` commands. As `wg-quick` is unavailable on IPFire, the script uses the native `wg` command to configure the tunnel. This approach requires a minor modification to the commercial VPN profile, which is detailed in the configuration steps below.
 
-### Control Script Functions
+-   **`do_start()`:** Performs the setup sequence in the correct order:
+    1.  Creates the `wg9` virtual interface and assigns its IP address.
+    2.  Applies the cryptographic keys from the `.conf` file using `wg setconf`.
+    3.  Brings the interface up.
+    4.  Builds the `blue-vpn` routing table with both local and default routes.
+    5.  Inserts the necessary `MASQUERADE` and `ACCEPT` rules into the `CUSTOMPOSTROUTING` and `CUSTOMFORWARD` chains.
+    6.  Activates the policy by adding the `ip rule` *after* all other components are in place.
 
-- **do_start():** Sets up the interface, routing table, firewall and NAT rules, and activates the policy routing.
-- **do_stop():** Reverses the setup, removing rules and restoring the original state.
-- **do_show():** Provides a diagnostic overview of the configuration for verification and troubleshooting.
+-   **`do_stop()`**: Tears down the configuration in the reverse order, ensuring the system is returned to its original state. It removes the policy rule, flushes the routes and firewall rules, and finally deletes the WireGuard interface.
 
-## 4. Usage Instructions
+-   **`do_show()`**: Provides a comprehensive diagnostic overview of the routing table, policy rules, firewall chains, and WireGuard interface status, making it easy to verify and troubleshoot the configuration.
+
+## 5. How to Use This Solution
 
 ### Prerequisites
-
-- Obtain a valid WireGuard configuration file from your VPN provider (e.g., NordVPN). This file should include the `[Peer]` information, `PublicKey`, and `Endpoint`.
+You must have a valid WireGuard configuration file from your VPN provider. This file should contain your `[Peer]` information, including their `PublicKey` and `Endpoint`.
 
 ### Step 1: Place the Files
-
-1. Save the control script on your IPFire machine (e.g., `/root/nordvpn.sh`).
-2. Save your provider's WireGuard configuration file in the same location.
+1.  Save the control script on your IPFire machine as `/root/nordvpn.sh`.
+2.  Save your provider's WireGuard configuration file in the same location (e.g., `/root/your_wireguard.conf`).
 
 ### Step 2: Configure the Files
+1.  **Edit the Control Script (`/root/nordvpn.sh`):**
+    -   Verify that the network variables (`BLUE_NETWORK`, `GREEN_NETWORK`, etc.) match your environment.
+    -   Update `WG_LOCAL_IP` with the local `Address` from your provider's config.
+    -   Update `WG_CONF` to point to your WireGuard configuration file.
 
-1. **Edit the Control Script (`/root/nordvpn.sh`):**
-   - Ensure the network variables (`BLUE_NETWORK`, `GREEN_NETWORK`, etc.) match your environment.
-   - Update `WG_LOCAL_IP` with the `Address` value from your provider's WireGuard config.
-   - Update `WG_CONF` with the location and name of your WireGuard file.
-2. **Edit the WireGuard Config File (`/root/your_wireguard.conf`):**
-   - Remove the `Address` and `DNS` entries. Only the `PrivateKey` entry should remain in the `[Interface]` section.
+2.  **Edit the WireGuard Config File:**
+    -   In the `[Interface]` section, remove the `Address` and `DNS` entries, leaving only your `PrivateKey`.
 
 ### Step 3: Manual Control
-
-You can now manage the VPN tunnel and all associated routing policies from the command line.
-
-- **To START the tunnel and apply all rules:**
-  ```bash
-  /root/nordvpn.sh start
-  ```
-- **To STOP the tunnel and remove all rules:**
-  ```bash
-  /root/nordvpn.sh stop
-  ```
-- **To SHOW the current status:**
-  ```bash
-  /root/nordvpn.sh show
-  ```
+-   **To START the tunnel and apply all rules:**
+    ```bash
+    /root/nordvpn.sh start
+    ```
+-   **To STOP the tunnel and cleanly remove all rules:**
+    ```bash
+    /root/nordvpn.sh stop
+    ```
+-   **To SHOW the current status of the configuration:**
+    ```bash
+    /root/nordvpn.sh show
+    ```
