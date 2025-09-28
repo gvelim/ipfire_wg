@@ -59,6 +59,8 @@ process_port_fwd_rules() {
 
 # Main program
 # ===============================================================
+RED_IP=$(ip -4 -o addr show dev ppp0 | awk '{print $4}' | cut -d/ -f1)
+
 
 # Check for the correct number of arguments
 [ "$#" -ne 3 ] && {
