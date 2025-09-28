@@ -59,7 +59,7 @@ process_port_fwd_rules() {
 
 # Main program
 # ===============================================================
-RED_IP=$(ifconfig red0 | awk '/inet /{sub(/addr:/,"",$2); print $2}')
+RED_IP=$(ifconfig ppp0| awk '/inet /{sub(/addr:/,"",$2); print $2}')
 
 
 # Check for the correct number of arguments
