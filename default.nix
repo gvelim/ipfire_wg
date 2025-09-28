@@ -5,5 +5,6 @@ pkgs.mkShellNoCC {
   packages = [
     pkgs.shellcheck
     pkgs.shfmt
+    pkgs.nil
   ];
  }
