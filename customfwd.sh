@@ -15,8 +15,8 @@ add_fwd_rule() {
 
   if ! is_active "$IP_RANGE"; then
     # Rule does not exist, so we add it.
-    echo "iptables -t nat -A NAT_DESTINATION -p tcp -s ${IP_RANGE} -d ${RED_IP} --dport ${DPORT} -j DNAT --to-destination ${DEST}"
-    echo "iptables -A CUSTOMFORWARD -p tcp -s ${IP_RANGE} -d ${DEST} --dport ${DPORT} -j ACCEPT"
+    iptables -t nat -A NAT_DESTINATION -p tcp -s ${IP_RANGE} -d ${RED_IP} --dport ${DPORT} -j DNAT --to-destination ${DEST}
+    iptables -A CUSTOMFORWARD -p tcp -s ${IP_RANGE} -d ${DEST} --dport ${DPORT} -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for $IP_RANGE already exists. Skipping."
@@ -30,8 +30,8 @@ del_fwd_rule() {
 
   if is_active "$IP_RANGE"; then
     # Rule exists, so we remove it.
-    echo "iptables -t nat -D NAT_DESTINATION -p tcp -s ${IP_RANGE} -d ${RED_IP} --dport ${DPORT} -j DNAT --to-destination ${DEST}"
-    echo "iptables -D CUSTOMFORWARD -p tcp -s ${IP_RANGE} -d ${DEST} --dport ${DPORT} -j ACCEPT"
+    iptables -t nat -D NAT_DESTINATION -p tcp -s ${IP_RANGE} -d ${RED_IP} --dport ${DPORT} -j DNAT --to-destination ${DEST}
+    iptables -D CUSTOMFORWARD -p tcp -s ${IP_RANGE} -d ${DEST} --dport ${DPORT} -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for $IP_RANGE does not exist. Skipping."
