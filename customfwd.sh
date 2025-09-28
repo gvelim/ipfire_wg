@@ -56,8 +56,32 @@ process_port_fwd_rules() {
 
 # Main program
 # ===============================================================
-DEST=${2:?"destination IP is missing"}
-DPORT=${3:?"destination port is missing"}
+# Check for the correct number of arguments
+[ "$#" -ne 3 ] && {
+  echo "Error: Invalid number of arguments."
+  echo "Usage: $0 [add|del] <destination_ip> <destination_port>"
+  exit 1
+}
+
+ACTION=$1
+DEST=$2
+DPORT=$3
+
+# Validate the action
+[[ "$ACTION" != "add" && "$ACTION" != "del" ]] && {
+  echo "Error: Invalid action '$ACTION'. Must be 'add' or 'del'."
+  exit 1
+}
+# Validate the IP format
+echo "$DEST" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || {
+  echo "Error: Invalid destination IP format for '$DEST'."
+  exit 1
+}
+# Validate the Port format
+echo "$DPORT" | grep -qE '^[0-9]+$' || {
+  echo "Error: Port must be a number, but got '$DPORT'."
+  exit 1
+}
 
 echo "Fetching Cloudflare IP ranges..."
 # Fetch IP ranges and handle potential curl errors
@@ -67,7 +91,7 @@ if [ -z "$IP_RANGES" ]; then
   exit 1
 fi
 
-case "$1" in
+case "$ACTION" in
 "add")
   process_port_fwd_rules "add_fwd_rule" "$IP_RANGES" "$DEST" "$DPORT"
   echo "Firewall rules updated."
@@ -75,10 +99,5 @@ case "$1" in
 "del")
   process_port_fwd_rules "del_fwd_rule" "$IP_RANGES" "$DEST" "$DPORT"
   echo "Firewall rules removed."
-  ;;
-*)
-  echo "use: customfw [add|del] destination port"
-  echo ""
-  echo "sh ./customfwd add 192.168.1.50 443"
   ;;
 esac
