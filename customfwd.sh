@@ -14,7 +14,7 @@ add_fwd_rule() {
 
   if ! is_active "$IP_RANGE"; then
     # Rule does not exist, so we add it.
-    echo "iptables -A CUSTOMFORWARD -p tcp -d ${DEST} --dport ${DPORT} -s ${IP_RANGE} -j ACCEPT"
+    iptables -A CUSTOMFORWARD -p tcp -d ${DEST} --dport ${DPORT} -s ${IP_RANGE} -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for $IP_RANGE already exists. Skipping."
@@ -28,7 +28,7 @@ del_fwd_rule() {
 
   if is_active "$IP_RANGE"; then
     # Rule exists, so we remove it.
-    echo "iptables -D CUSTOMFORWARD -p tcp -d ${DEST} --dport ${DPORT} -s ${IP_RANGE} -j ACCEPT"
+    iptables -D CUSTOMFORWARD -p tcp -d ${DEST} --dport ${DPORT} -s ${IP_RANGE} -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for $IP_RANGE does not exist. Skipping."
