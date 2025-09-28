@@ -4,8 +4,8 @@
 # Returns true (0) if the rule exists, false (non-zero) otherwise.
 is_active() {
   local ip_range="$1"
-  iptables -C CUSTOMFORWARD -p tcp -d "${DEST}" --dport "${DPORT}" -s "${ip_range}" -j ACCEPT &>>/dev/null
-  iptables -t nat -C NAT_DESTINATION -p tcp -s "${ip_range}" -d "${RED_IP}" --dport "${DPORT}" -j DNAT --to-destination "${DEST}" &>>/dev/null
+  iptables -C CUSTOMFORWARD -p tcp -d "${DEST}" --dport "${DPORT}" -s "${ip_range}" -j ACCEPT &>>/dev/null &&
+    iptables -t nat -C NAT_DESTINATION -p tcp -s "${ip_range}" -d "${RED_IP}" --dport "${DPORT}" -j DNAT --to-destination "${DEST}" &>>/dev/null
 }
 
 add_fwd_rule() {
