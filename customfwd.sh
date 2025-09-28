@@ -15,8 +15,8 @@ add_fwd_rule() {
 
   if ! is_active "$IP_RANGE"; then
     # Rule does not exist, so we add it.
-    iptables -t nat -A NAT_DESTINATION -p tcp -s ${IP_RANGE} -d ${RED_IP} --dport ${DPORT} -j DNAT --to-destination ${DEST}
-    iptables -A CUSTOMFORWARD -p tcp -s ${IP_RANGE} -d ${DEST} --dport ${DPORT} -j ACCEPT
+    iptables -t nat -A NAT_DESTINATION -p tcp -s "${IP_RANGE}" -d "${RED_IP}" --dport "${DPORT}" -j DNAT --to-destination "${DEST}"
+    iptables -A CUSTOMFORWARD -p tcp -s "${IP_RANGE}" -d "${DEST}" --dport "${DPORT}" -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for $IP_RANGE already exists. Skipping."
@@ -30,8 +30,8 @@ del_fwd_rule() {
 
   if is_active "$IP_RANGE"; then
     # Rule exists, so we remove it.
-    iptables -t nat -D NAT_DESTINATION -p tcp -s ${IP_RANGE} -d ${RED_IP} --dport ${DPORT} -j DNAT --to-destination ${DEST}
-    iptables -D CUSTOMFORWARD -p tcp -s ${IP_RANGE} -d ${DEST} --dport ${DPORT} -j ACCEPT
+    iptables -t nat -D NAT_DESTINATION -p tcp -s "${IP_RANGE}" -d "${RED_IP}" --dport "${DPORT}" -j DNAT --to-destination "${DEST}"
+    iptables -D CUSTOMFORWARD -p tcp -s "${IP_RANGE}" -d "${DEST}" --dport "${DPORT}" -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for $IP_RANGE does not exist. Skipping."
@@ -59,7 +59,6 @@ process_port_fwd_rules() {
 
 # Main program
 # ===============================================================
-RED_IP=$(ifconfig ppp0 | awk '/inet /{print $2}')
 
 # Check for the correct number of arguments
 [ "$#" -ne 3 ] && {
@@ -87,6 +86,8 @@ echo "$DPORT" | grep -qE '^[0-9]+$' || {
   echo "Error: Port must be a number, but got '$DPORT'."
   exit 1
 }
+
+RED_IP=$(ifconfig ppp0 | awk '/inet /{print $2}')
 
 echo "Fetching Cloudflare IP ranges..."
 # Fetch IP ranges and handle potential curl errors
