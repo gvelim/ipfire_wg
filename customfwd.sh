@@ -5,6 +5,7 @@
 is_active() {
   local ip_range="$1"
   iptables -C CUSTOMFORWARD -p tcp -d "${DEST}" --dport "${DPORT}" -s "${ip_range}" -j ACCEPT &>>/dev/null
+  iptables -t nat -C NAT_DESTINATION -p tcp -s "${ip_range}" -d "${RED_IP}" --dport "${DPORT}" -j DNAT --to-destination "${DEST}" &>>/dev/null
 }
 
 add_fwd_rule() {
@@ -14,7 +15,8 @@ add_fwd_rule() {
 
   if ! is_active "$IP_RANGE"; then
     # Rule does not exist, so we add it.
-    iptables -A CUSTOMFORWARD -p tcp -d "${DEST}" --dport "${DPORT}" -s "${IP_RANGE}" -j ACCEPT
+    echo "iptables -t nat -A NAT_DESTINATION -p tcp -s ${IP_RANGE} -d ${RED_IP} --dport ${DPORT} -j DNAT --to-destination ${DEST}"
+    echo "iptables -A CUSTOMFORWARD -p tcp -s ${IP_RANGE} -d ${DEST} --dport ${DPORT} -j ACCEPT"
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for $IP_RANGE already exists. Skipping."
@@ -28,7 +30,8 @@ del_fwd_rule() {
 
   if is_active "$IP_RANGE"; then
     # Rule exists, so we remove it.
-    iptables -D CUSTOMFORWARD -p tcp -d "${DEST}" --dport "${DPORT}" -s "${IP_RANGE}" -j ACCEPT
+    echo "iptables -t nat -D NAT_DESTINATION -p tcp -s ${IP_RANGE} -d ${RED_IP} --dport ${DPORT} -j DNAT --to-destination ${DEST}"
+    echo "iptables -D CUSTOMFORWARD -p tcp -s ${IP_RANGE} -d ${DEST} --dport ${DPORT} -j ACCEPT"
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for $IP_RANGE does not exist. Skipping."
@@ -56,6 +59,7 @@ process_port_fwd_rules() {
 
 # Main program
 # ===============================================================
+
 # Check for the correct number of arguments
 [ "$#" -ne 3 ] && {
   echo "Error: Invalid number of arguments."
