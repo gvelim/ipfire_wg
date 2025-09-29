@@ -6,5 +6,6 @@ pkgs.mkShellNoCC {
     pkgs.shellcheck
     pkgs.shfmt
     pkgs.nil
+    pkgs.git
   ];
  }

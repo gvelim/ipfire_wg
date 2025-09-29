@@ -32,109 +32,152 @@
 #
 
 # Checks if a port forwarding rule already exists for the given IP range.
-# Returns true (0) if the rule exists, false (non-zero) otherwise.
+# Returns true (0) if both rules exist, false (non-zero) otherwise.
 is_active() {
   local ip_range="$1"
-  iptables -C CUSTOMFORWARD -p tcp -d "${DEST}" --dport "${DPORT}" -s "${ip_range}" -j ACCEPT &>>/dev/null &&
-    iptables -t nat -C NAT_DESTINATION -p tcp -s "${ip_range}" -d "${RED_IP}" --dport "${DPORT}" -j DNAT --to-destination "${DEST}" &>>/dev/null
+  local dest="$2"
+  local dport="$3"
+  local red_ip="$4"
+  iptables -t nat -C NAT_DESTINATION -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}" &>/dev/null &&
+    iptables -C CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT &>/dev/null
 }
 
 add_fwd_rule() {
-  local IP_RANGE="$1"
-  local DEST="$2"
-  local DPORT="$3"
-
-  if ! is_active "$IP_RANGE"; then
+  local ip_range="$1"
+  local dest="$2"
+  local dport="$3"
+  local red_ip="$4"
+  if ! is_active "$ip_range" "$dest" "$dport" "$red_ip"; then
     # Rule does not exist, so we add it.
-    iptables -t nat -A NAT_DESTINATION -p tcp -s "${IP_RANGE}" -d "${RED_IP}" --dport "${DPORT}" -j DNAT --to-destination "${DEST}"
-    iptables -A CUSTOMFORWARD -p tcp -s "${IP_RANGE}" -d "${DEST}" --dport "${DPORT}" -j ACCEPT
+    iptables -t nat -A NAT_DESTINATION -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
+    iptables -A CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
-    echo "Rule for $IP_RANGE already exists. Skipping."
+    echo "Rule for ${ip_range} already exists. Skipping."
   fi
 }
 
 del_fwd_rule() {
-  local IP_RANGE="$1"
-  local DEST="$2"
-  local DPORT="$3"
-
-  if is_active "$IP_RANGE"; then
+  local ip_range="$1"
+  local dest="$2"
+  local dport="$3"
+  local red_ip="$4"
+  if is_active "$ip_range" "$dest" "$dport" "$red_ip"; then
     # Rule exists, so we remove it.
-    iptables -t nat -D NAT_DESTINATION -p tcp -s "${IP_RANGE}" -d "${RED_IP}" --dport "${DPORT}" -j DNAT --to-destination "${DEST}"
-    iptables -D CUSTOMFORWARD -p tcp -s "${IP_RANGE}" -d "${DEST}" --dport "${DPORT}" -j ACCEPT
+    iptables -t nat -D NAT_DESTINATION -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
+    iptables -D CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT
   else
     # Rule do not exist, so we report it and do nothing.
-    echo "Rule for $IP_RANGE does not exist. Skipping."
+    echo "Rule for ${ip_range} does not exist. Skipping."
   fi
 }
 
 process_port_fwd_rules() {
   local func="$1"
-  local IP_RANGES="$2"
-  local DEST="$3"
-  local DPORT="$4"
+  local ip_ranges="$2"
+  local dest="$3"
+  local dport="$4"
+  local red_ip="$5"
 
   echo "Processing IP ranges..."
   # Loop through each IP range
-  for ip_range in $IP_RANGES; do
-
-    if [[ -z "$ip_range" ]]; then
-      echo "Skipping empty entry..."
-      continue # Go to the next item in the loop
-    else
-      $func "$ip_range" "$DEST" "$DPORT"
-    fi
+  for ip_range in $ip_ranges; do
+    # Skip empty entries from the input
+    [[ -z "$ip_range" ]] && {
+        echo "Skipping empty entry..."
+        continue
+    }
+    "$func" "$ip_range" "$dest" "$dport" "$red_ip"
   done
 }
 
+validate_ip() {
+  local ip="$1"
+  if [[ $ip =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+    for octet in "${BASH_REMATCH[@]:1}"; do
+      if ((octet > 255)); then
+        return 1
+      fi
+    done
+    return 0
+  else
+    return 1
+  fi
+}
+
+validate_add_del_params() {
+  # Check for the correct number of arguments
+  if [ "$#" -ne 3 ]; then
+    echo "Error: Invalid number of arguments."
+    echo "Usage: $0 [add|del] <destination_ip> <destination_port>"
+    return 1
+  fi
+
+  local dest="$2"
+  local dport="$3"
+
+  # Validate the IP format using a regex
+  if ! validate_ip "$dest"; then
+    echo "Error: Invalid destination IP format for '$dest'."
+    return 1
+  fi
+  # Validate the Port format
+  if ! [[ "$dport" =~ ^[0-9]+$ ]] || ((dport < 1 || dport > 65535)); then
+      echo "Error: Port must be between 1 and 65535, but got '$dport'."
+    return 1
+  fi
+}
 # Main program
 # ===============================================================
-
-# Check for the correct number of arguments
-[ "$#" -ne 3 ] && {
-  echo "Error: Invalid number of arguments."
-  echo "Usage: $0 [add|del] <destination_ip> <destination_port>"
-  exit 1
-}
 
 ACTION=$1
 DEST=$2
 DPORT=$3
 
-# Validate the action
-[[ "$ACTION" != "add" && "$ACTION" != "del" ]] && {
-  echo "Error: Invalid action '$ACTION'. Must be 'add' or 'del'."
-  exit 1
-}
-# Validate the IP format
-echo "$DEST" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || {
-  echo "Error: Invalid destination IP format for '$DEST'."
-  exit 1
-}
-# Validate the Port format
-echo "$DPORT" | grep -qE '^[0-9]+$' || {
-  echo "Error: Port must be a number, but got '$DPORT'."
-  exit 1
-}
-
-RED_IP=$(ifconfig ppp0 | awk '/inet /{print $2}')
-
-echo "Fetching Cloudflare IP ranges..."
-# Fetch IP ranges and handle potential curl errors
-IP_RANGES=$(curl -s https://www.cloudflare.com/ips-v4)
-if [ -z "$IP_RANGES" ]; then
-  echo "Error: Failed to fetch IP ranges from Cloudflare. Exiting."
-  exit 1
-fi
-
 case "$ACTION" in
-"add")
-  process_port_fwd_rules "add_fwd_rule" "$IP_RANGES" "$DEST" "$DPORT"
-  echo "Firewall rules updated."
+"add" | "del")
+  validate_add_del_params "$@" || exit 1
+
+  RED_IP=$(ifconfig ppp0 | awk '/inet /{print $2}')
+  if [ -z "$RED_IP" ]; then
+    echo "Error: Could not determine IP for ppp0 interface. Is it up?"
+    exit 1
+  fi
+
+  echo "Fetching Cloudflare IP ranges..."
+  # Fetch IP ranges and handle potential curl errors
+  IP_RANGES=$(curl -s https://www.cloudflare.com/ips-v4)
+  if [ -z "$IP_RANGES" ]; then
+    echo "Error: Failed to fetch IP ranges from Cloudflare. Exiting."
+    exit 1
+  fi
+
+  if [ "$ACTION" == "add" ]; then
+    process_port_fwd_rules "add_fwd_rule" "$IP_RANGES" "$DEST" "$DPORT" "$RED_IP"
+    echo "Firewall rules added."
+  else
+    process_port_fwd_rules "del_fwd_rule" "$IP_RANGES" "$DEST" "$DPORT" "$RED_IP"
+    echo "Firewall rules removed."
+  fi
   ;;
-"del")
-  process_port_fwd_rules "del_fwd_rule" "$IP_RANGES" "$DEST" "$DPORT"
-  echo "Firewall rules removed."
+"show")
+  echo "=== CUSTOMFORWARD chain ==="
+  iptables -L CUSTOMFORWARD -v -n
+  echo "=== NAT_DESTINATION chain ==="
+  iptables -t nat -L NAT_DESTINATION -v -n
+  ;;
+*)
+  echo "Usage: $0 [add|del] <destination_ip> <destination_port>"
+  echo "       $0 show"
+  echo
+  echo "Examples:"
+  echo "  # Forward port 443 to internal server 192.168.1.100 for Cloudflare IPs"
+  echo "  $0 add 192.168.1.100 443"
+  echo
+  echo "  # Remove forwarding rules for port 443 from Cloudflare IPs"
+  echo "  $0 del 192.168.1.100 443"
+  echo
+  echo "  # Show current rules"
+  echo "  $0 show"
   ;;
 esac
