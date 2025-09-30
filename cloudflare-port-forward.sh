@@ -62,14 +62,12 @@ del_fwd_rule() {
   local dest="$2"
   local dport="$3"
   local red_ip="$4"
-  if is_active "$ip_range" "$dest" "$dport" "$red_ip"; then
-    # Rule exists, so we remove it.
-    iptables -t nat -D CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
-    iptables -D CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT
-  else
-    # Rule do not exist, so we report it and do nothing.
-    echo "Rule for ${ip_range} does not exist. Skipping."
-  fi
+
+  # Brute force clean-up in case some entries have been created but no others
+  iptables -t nat -D CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}" 2>/dev/null ||
+    echo "NAT Rule for ${ip_range} does not exist. Skipping."
+  iptables -D CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT 2>/dev/null ||
+    echo "Forward Rule for ${ip_range} does not exist. Skipping."
 }
 
 process_port_fwd_rules() {
