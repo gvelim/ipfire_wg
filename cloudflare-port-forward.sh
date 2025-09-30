@@ -38,7 +38,7 @@ is_active() {
   local dest="$2"
   local dport="$3"
   local red_ip="$4"
-  iptables -t nat -C NAT_DESTINATION -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}" &>/dev/null &&
+  iptables -t nat -C CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}" &>/dev/null &&
     iptables -C CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT &>/dev/null
 }
 
@@ -49,7 +49,7 @@ add_fwd_rule() {
   local red_ip="$4"
   if ! is_active "$ip_range" "$dest" "$dport" "$red_ip"; then
     # Rule does not exist, so we add it.
-    iptables -t nat -A NAT_DESTINATION -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
+    iptables -t nat -A CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
     iptables -A CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
@@ -64,7 +64,7 @@ del_fwd_rule() {
   local red_ip="$4"
   if is_active "$ip_range" "$dest" "$dport" "$red_ip"; then
     # Rule exists, so we remove it.
-    iptables -t nat -D NAT_DESTINATION -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
+    iptables -t nat -D CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
     iptables -D CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT
   else
     # Rule do not exist, so we report it and do nothing.
