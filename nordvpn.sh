@@ -73,9 +73,9 @@ do_start() {
   echo "==> [START] Routing in place. Applying NAT & Forwarding firewall rules..."
 
   # 7. Configure Firewall: Custom NAT and Forwarding rules.
-  iptables -t nat -A CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE
-  iptables -I CUSTOMFORWARD 1 -s "${BLUE_NETWORK}" -o "${WG_IFACE}" -j ACCEPT
-  iptables -I CUSTOMFORWARD 2 -d "${BLUE_NETWORK}" -i "${WG_IFACE}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  iptables --wait -t nat -A CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE
+  iptables --wait -I CUSTOMFORWARD 1 -s "${BLUE_NETWORK}" -o "${WG_IFACE}" -j ACCEPT
+  iptables --wait -I CUSTOMFORWARD 2 -d "${BLUE_NETWORK}" -i "${WG_IFACE}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
   echo "==> [START] NAT & Forwarding rules in place. Activating policy routing ..."
 
@@ -105,9 +105,9 @@ do_stop() {
   echo "==> [STOP] Removing NAT & Forwarding rules..."
 
   # 3. Remove Firewall rules.
-  iptables -t nat -D CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE 2>/dev/null || true
-  iptables -D CUSTOMFORWARD -s "${BLUE_NETWORK}" -o "${WG_IFACE}" -j ACCEPT 2>/dev/null || true
-  iptables -D CUSTOMFORWARD -d "${BLUE_NETWORK}" -i "${WG_IFACE}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+  iptables --wait -t nat -D CUSTOMPOSTROUTING -o "${WG_IFACE}" -j MASQUERADE 2>/dev/null || true
+  iptables --wait -D CUSTOMFORWARD -s "${BLUE_NETWORK}" -o "${WG_IFACE}" -j ACCEPT 2>/dev/null || true
+  iptables --wait -D CUSTOMFORWARD -d "${BLUE_NETWORK}" -i "${WG_IFACE}" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
 
   echo "### [STOP] Tearing down ${WG_IFACE}..."
 
@@ -130,11 +130,11 @@ do_show() {
   echo ""
 
   echo "### CUSTOMFORWARD firewall rules:"
-  iptables -L CUSTOMFORWARD -n -v 2>/dev/null || echo "❌ CUSTOMFORWARD chain not found"
+  iptables --wait -L CUSTOMFORWARD -n -v 2>/dev/null || echo "❌ CUSTOMFORWARD chain not found"
   echo ""
 
   echo "### CUSTOMPOSTROUTING NAT rules:"
-  iptables -t nat -L CUSTOMPOSTROUTING -n -v 2>/dev/null || echo "❌ CUSTOMPOSTROUTING chain not found"
+  iptables --wait -t nat -L CUSTOMPOSTROUTING -n -v 2>/dev/null || echo "❌ CUSTOMPOSTROUTING chain not found"
   echo ""
 
   echo "### WireGuard interface status:"
