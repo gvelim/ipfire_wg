@@ -38,8 +38,8 @@ is_active() {
   local dest="$2"
   local dport="$3"
   local red_ip="$4"
-  iptables -t nat -C CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}" &>/dev/null &&
-    iptables -C CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT &>/dev/null
+  iptables --wait -t nat -C CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}" &>/dev/null &&
+    iptables --wait -C CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT &>/dev/null
 }
 
 add_fwd_rule() {
@@ -49,8 +49,8 @@ add_fwd_rule() {
   local red_ip="$4"
   if ! is_active "$ip_range" "$dest" "$dport" "$red_ip"; then
     # Rule does not exist, so we add it.
-    iptables -t nat -A CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
-    iptables -A CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT
+    iptables --wait -t nat -A CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}"
+    iptables --wait -A CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT
   else
     # Rule already exists, so we report it and do nothing.
     echo "Rule for ${ip_range} already exists. Skipping."
@@ -64,9 +64,9 @@ del_fwd_rule() {
   local red_ip="$4"
 
   # Brute force clean-up in case some entries have been created but no others
-  iptables -t nat -D CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}" 2>/dev/null ||
+  iptables --wait -t nat -D CUSTOMPREROUTING -p tcp -s "${ip_range}" -d "${red_ip}" --dport "${dport}" -j DNAT --to-destination "${dest}" 2>/dev/null ||
     echo "NAT Rule for ${ip_range} does not exist. Skipping."
-  iptables -D CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT 2>/dev/null ||
+  iptables --wait -D CUSTOMFORWARD -p tcp -s "${ip_range}" -d "${dest}" --dport "${dport}" -j ACCEPT 2>/dev/null ||
     echo "Forward Rule for ${ip_range} does not exist. Skipping."
 }
 
@@ -82,8 +82,8 @@ process_port_fwd_rules() {
   for ip_range in $ip_ranges; do
     # Skip empty entries from the input
     [[ -z "$ip_range" ]] && {
-        echo "Skipping empty entry..."
-        continue
+      echo "Skipping empty entry..."
+      continue
     }
     "$func" "$ip_range" "$dest" "$dport" "$red_ip"
   done
@@ -121,7 +121,7 @@ validate_add_del_params() {
   fi
   # Validate the Port format
   if ! [[ "$dport" =~ ^[0-9]+$ ]] || ((dport < 1 || dport > 65535)); then
-      echo "Error: Port must be between 1 and 65535, but got '$dport'."
+    echo "Error: Port must be between 1 and 65535, but got '$dport'."
     return 1
   fi
 }
@@ -160,9 +160,9 @@ case "$ACTION" in
   ;;
 "show")
   echo "=== CUSTOMFORWARD chain ==="
-  iptables -L CUSTOMFORWARD -v -n
-  echo "=== NAT_DESTINATION chain ==="
-  iptables -t nat -L NAT_DESTINATION -v -n
+  iptables --wait -L CUSTOMFORWARD -v -n
+  echo "=== CUSTOMPREROUTING chain ==="
+  iptables --wait -t nat -L CUSTOMPREROUTING -v -n
   ;;
 *)
   echo "Usage: $0 [add|del] <destination_ip> <destination_port>"
