@@ -15,19 +15,31 @@
 
 To ensure forwarding rules persist across firewall restarts or system reboots, integrate the script into IPFire's `firewall.local` mechanism.
 
-Add a call to the script in `/etc/rc.d/rc.firewall.local`:
+Add a call to the script in `vim /etc/sysconfig/firewall.local`:
 
-```bash
-# Cloudflare Port Forwarding
-# Add rules for Cloudflare IP ranges to forward specific ports
-/path/to/cloudflare-port-forward.sh add <destination_ip> <destination_port>
 ```
+#!/bin/sh
+# Used for private firewall rules
 
-**Example:** Forwarding port 443 to an internal server at 192.168.1.100.
-
-```bash
-# Cloudflare Port Forwarding for web server
-/root/scripts/cloudflare-port-forward.sh add 192.168.1.100 443
+# See how we were called.
+case "$1" in
+  start)
+        ## add your 'start' rules here
+        sh /root/cloudflare-port-forward.sh add 192.168.1.52 443
+        ;;
+  stop)
+        ## add your 'stop' rules here
+        sh /root/cloudflare-port-forward.sh del 192.168.1.52 443
+        ;;
+  reload)
+        $0 stop
+        $0 start
+        ## add your 'reload' rules here
+        ;;
+  *)
+        echo "Usage: $0 {start|stop|reload}"
+        ;;
+esac
 ```
 
 ### Testing Integration
